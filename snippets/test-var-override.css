@@ -1,0 +1,11 @@
+/* 测试：能否用注入 CSS 覆盖 VS Code 主题变量，替代 workbench.colorCustomizations */
+.monaco-workbench {
+  --vscode-focusBorder: transparent !important;
+  --vscode-list-focusOutline: transparent !important;
+  --vscode-panelTitle-activeBorder: transparent !important;
+  --vscode-activityBar-activeBorder: transparent !important;
+  --vscode-activityBar-activeBackground: transparent !important;
+  --vscode-tab-activeBorder: transparent !important;
+  --vscode-tab-activeBorderTop: transparent !important;
+  --vscode-tab-border: transparent !important;
+}

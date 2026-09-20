@@ -1,0 +1,7 @@
+# 调试截图（中间产物，不入库）
+shots/
+
+# 系统文件
+Thumbs.db
+Desktop.ini
+.DS_Store
