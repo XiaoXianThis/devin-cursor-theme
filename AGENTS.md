@@ -392,6 +392,7 @@ node tools/cdp.mjs evalfile workbench.html snippets/verify-all.js
 | 35 | 工具卡片对齐 Cursor：去掉 `border-beam` 光束装饰与 w-5 状态点、命令/输出 13/18 @36% 无语法色（第 23 段） | ✅ |
 | 36 | 活动行（Thoughts / Read / Searched）对齐 Cursor：去掉左侧图标，展开按钮移到文字右侧，目标 `code` 去胶囊底（第 24 段） | ✅ |
 | 37 | 命令输出折叠高度对齐 Cursor：Devin 64px + 35px 渐隐 → 96px 无渐隐（第 25 段，只匹配折叠态内联值） | ✅ |
+| 38 | 输入框对齐 Cursor（之后按用户要求编辑区最小高度 22→28，整体约 79px）：高 84→73（去掉 `scrollbar-hide` 的 min-h-[2rem] 和 flex-1 撑高）、描边 12%（底色跟随主题）、控制行 29px 居中、模型按钮 13/18 @74%（第 26 段） | ✅ |
 
 侧边栏结构（`#workbench.parts.sidebar` 的三个直接子元素）：
 
