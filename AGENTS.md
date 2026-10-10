@@ -19,6 +19,16 @@
 | Cursor 配置目录 | `C:\Users\XiaoXian\.cursor` |
 | Node | `E:\Runtime\nodejs\node.exe` v22.17.0（原生 WebSocket / fetch / node:sqlite） |
 
+macOS 上（仓库已迁到 Mac，工具链同样可用）：
+
+| 项 | 值 |
+|---|---|
+| Devin 应用 | `/Applications/Devin.app`，主进程 `Contents/MacOS/Devin` |
+| Devin 用户数据 | `~/Library/Application Support/Devin`（settings.json 在 `User/` 下） |
+| Devin 配置目录 | `~/.devin`（`argv.json`、`devin-ui.js`、`extensions/` 都在这） |
+| Node | v24.21.0（nvm），原生 WebSocket / fetch 可用 |
+| 实测结论 | 主题在 macOS 上完整生效：`<style id="devin-ui-style">` 23.5KB 注入、`--vscode-focusBorder` = transparent、activitybar 0×0、图标进侧边栏 header、折叠态 8 个图标只显示 4 个 |
+
 ## 关键坑（全部踩过）
 
 1. **id 里带点**。`windsurf.cascadePanel`、`workbench.parts.titlebar` 是**完整的 id 字面量**，
@@ -72,6 +82,28 @@
     打在面板元素本身的标记永远清不掉，要用 `document` 作用域。
 14. **`[class*="..."]` 可能先匹配到 SVG**。SVG 元素的 `className` 是 `SVGAnimatedString` 不是字符串，
     用 `div[class*="..."]` 限定标签名。
+15. **别用 `launchctl submit` 托管「重启 Devin」脚本**。launchctl 会在 job 退出后**自动重跑**它
+    （受 10s respawn 节流），脚本耗时超过 10s 就变成死循环：实测一个 21s 的脚本被以
+    「每 21 秒杀一次 Devin」的节奏跑了 20 多轮。验证：`launchctl submit -l x -- bash -c 'echo hi >> f'`
+    在 26 秒内写了 3 行（间隔正好 10s）。
+    **正确做法**：node `spawn(..., { detached: true })` + `unref()`，detached 在 POSIX 上就是
+    `setsid()`，worker 自成会话与进程组。验证方式：`ps -o pid,ppid,pgid -p <worker>`
+    应看到 `PPID=1`（被 launchd 收养）且 `PGID=PID`（自成进程组）。见 `tools/restart-devin.mjs`。
+16. **agent 自己就跑在 Devin 里**，重启 Devin 会连带杀掉 agent 会话。所以「重启并等待端口」
+    这类动作必须放进脱离进程树的 worker（同上），否则端口永远等不到。判断方法：
+    `ps -o ppid= -p $$` 的父进程是 `Devin.app/.../devin acp`。
+17. **Base UI 的下拉只 dispatch `click` 打不开**。它的 Popover 监听 `pointerdown`，
+    只补一个 `click` 事件菜单不会出现。要按
+    `pointerdown → mousedown → pointerup → mouseup → click` 完整序列派发，
+    并带上 `pointerId` / `isPrimary` / `pointerType`（`PointerEvent` 构造参数）。
+    见 `devin-ui.js` 里的 `realClick()`。
+17. **`color-mix(..., transparent)` 出来的填充是半透明的，盖不住东西**。4% 填充的 alpha
+    就是 0.04。贴在实心表面上的元素用它没问题，但**浮在消息列表上方的层（band 槽位里的
+    条目）必须用不透明的底**，否则下面滚动的文字会原样透上来。做法：把 `transparent` 换成
+    不透明的面板色（`--ds-surface-bg`）。详见「提问卡片」一节。
+18. **验证方法本身也会骗人**。只读计算样式、或在"背后没内容"的状态下截图，都会得出
+    "改好了"的错误结论。凡是"盖住/遮住"类的改动，必须在被遮对象**确实存在**的情况下验证
+    （合成一段高饱和内容放在下层，再采样像素）。
 
 ## 界面架构（Devin）
 
@@ -81,8 +113,34 @@
 - 布局 2×2：左上 `[id="workbench.parts.leftheader"]`（342×40，放 agent/editor 切换器），
   右上 `[id="workbench.parts.titlebar"]`（放菜单栏）；左下 activitybar+sidebar，右下 editor。
 - composer：`div.group\/beard-band` → `div.flex.w-full.flex-col.transition-none` →
-  `1)` Quick review 条（absolute）`2)` 输入框（`.cursor-text.border.rounded-xl`）
+  `1)` **band 槽位** `div.absolute.bottom-full`（absolute，浮在消息列表上方，见下）
+  `2)` 输入框（`.cursor-text.border.rounded-xl`）
   `3)` 底部 "Local | 工作区" 条（`.overflow-x-clip`）。
+
+**band 槽位**（第 14 段相关）：`div.absolute.bottom-full.left-0.right-0` 是 composer 上方
+那个 absolute 槽位，里面按 `[data-band-item]` 放条目 —— 文件变更条和 ACP 提问卡片都在这。
+关键：这个槽位在 `.group/beard-band` **外面**，而 composer 的毛玻璃底
+（`div.pointer-events-none.absolute.inset-0.bg-bg-elevated-wax.backdrop-blur`，`rgba(37,37,38,.94)`）
+只盖住 `.group/beard-band` 自己 —— 所以槽位里的条目**默认没有底**，是直接压在消息列表上的。
+每个条目必须自带背景：变更条靠第 14 段的药丸底，提问卡片靠第 14 段末尾那条规则。
+
+结构对照（两层都实测过）：
+
+| 条目 | 结构 |
+|---|---|
+| 文件变更条 | `[data-band-item]` > `div.flex.min-w-0.flex-col` > `div.flex.min-w-0.flex-col.gap-1`（药丸，425×27） |
+| 提问卡片 | `[data-band-item]` > `div`（无类名）> `div.flex.flex-col`（425×317）> 问题行 `div.flex.gap-2.pl-3.5.pr-1.items-start.min-h-8` |
+
+两者的 `[data-band-item]` 类名**完全相同**（`flex min-w-0 flex-col py-1.5 empty:hidden
+divide-y divide-border-secondary [&>*+*]:mt-[5px] [&>*+*]:pt-[5px]`），只能靠后代结构区分：
+卡片的内容在 `div > div.flex.flex-col`（**没有** `min-w-0`），变更条的在
+`div.flex.min-w-0.flex-col > .flex.min-w-0.flex-col.gap-1`（**有** `min-w-0`）。
+所以用 `[data-band-item]:has(> div > div.flex.flex-col:not(.min-w-0))`。
+实测：页面上 10 个 `[data-band-item]` 只命中卡片那一个。
+（别用 `div:not([class])` 判无类名 —— React 可能渲染出 `class=""`，属性存在但值为空。）
+
+提问卡片几何：和输入框**同宽同 x、底面紧贴输入框顶**（都是 x 1419 w 490，分界 y 963），
+所以给它和输入框一样的 `--ds-fill-faint` 填充就能拼成一整块不透明的面。
 
 Devin 聊天区组件对应：
 
@@ -96,13 +154,14 @@ Devin 聊天区组件对应：
 | 行内代码 | `code.bg-tint-secondary` |
 | 思考区左侧竖线 | `.group/collapse-bar` 内的 `div.w-px`（1px，`bg-border-secondary`）；外层还有 16px 导轨 + 8px 间距的缩进，由 `--chat-collapse-rail-width` / `--chat-collapse-content-gap` 控制 |
 | 文件变更条 | `div.absolute.bottom-full` → 内容行 `div.flex.min-w-0.flex-col.gap-1`（外层 `py-1.5` 撑高度） |
+| 提问卡片（elicitation） | 同上的 band 槽位；`[data-band-item]` > `div` > `div.flex.flex-col`，问题行 `div.flex.gap-2.pl-3.5.pr-1.items-start.min-h-8`。ACP elicitation 请求挂起时才渲染，`composerPlaceholder` 变成 "Other answer"（复用 composer 输入框） |
 
 composer 工具栏按钮（实测）：
 
 | 识别方式 | 按钮 | 处理 |
 |---|---|---|
 | `title="Add context"` | `+` | 隐藏 |
-| 文字以 `Bypass` 开头 | 权限按钮 | CSS `::after` 改成 `bypass` + 灰色药丸底 |
+| 文字以 `Bypass` 开头 | 权限按钮 | 文字改成 `Agent` + 灰色药丸底 |
 | 文字以 `DeepSeek` 开头 | 模型选择 | 不动 |
 | `title="Context usage: N%"` | 上下文用量 | 不动 |
 | 文字以 `Devin ` 开头 | agent 切换 | 只留图标（隐藏 span） |
@@ -126,6 +185,32 @@ React 重渲染会丢标记，所以 `decorate()` 要放在定时器里反复执
 
 附件位置：Cursor 的图片缩略图在**文字上方**，Devin 在下方。用
 `div.cursor-text.border > div:has(> .group\/attachment) { order: -1 }` 调换。
+
+占位符（hint）是 Slate 的 `span[data-slate-placeholder]`：行内样式 `position:absolute; width:100%`，
+继承编辑器的 `white-space: pre-wrap`，窄面板下会折行，第二行被 `min-h-[2rem]` 滚动容器裁掉。
+用 `white-space: nowrap; overflow: hidden; text-overflow: ellipsis` 压成单行。
+
+模式按钮（`[data-devin-perm]`）：父级 `flex min-w-6` + span `min-w-0 truncate` 默认可收缩，窄面板下
+"Bypass" 被挤成只剩图标。给父级 / 按钮 / span 设 `flex-shrink: 0`，让模型名去截断。
+下拉箭头 `.devin-chevron`：按钮自带 `[&_svg]:!size-4`、`[&_svg:last-child:not(:first-child)]:ml-[2px]`，
+要用 `button > svg.devin-chevron.devin-chevron` 才压得住；viewBox 裁成 `3 0 10 16` 去掉两侧留白。
+模型名**不**在保护范围内：仍可收缩 + 省略号截断（控制行保持 `flex-wrap: nowrap`，不能换行）。
+
+> **窄面板下 app 会整颗换按钮**：composer 容器宽 < ~370px 时，模式药丸从「图标+文字」变体
+> 换成 `size-6` 的**只有图标**按钮（`[&_svg]:size-[16px]`，**文字根本不在 DOM 里**，
+> React 条件渲染），CSS 救不回来。所以 `devin-ui.js` 自己把文字补回去：
+> 用图标的 `path d` 当键记住「图标 → 模式名」（`localStorage['devin-ui.perm-labels']`），
+> 缺文字时插一个自己的 `span[data-devin-label]`。模式名来源：① 药丸自己渲染文字时顺便记下；
+> ② 模式菜单打开时（菜单项 = 图标 + `span.break-words` 标题 + 说明）整批记下。
+> 代价：全新窗口 + 一直窄 + 从没开过模式菜单时，无字可显示（开一次菜单或放宽一次面板即永久记住）。
+> 配套 CSS：`[data-devin-perm]:has(> [data-devin-label])` 还原 `width:auto` + 内边距 + gap，
+> 并且 `button[class*="size-6"]` 那条图标尺寸规则要加 `:not([data-devin-perm])`，
+> 否则药丸被钉死在 20px 宽、补回来的文字被裁掉（选择器权重不够压不过它）。
+语音按钮用 `button[aria-label*="recording" i]` 隐藏。右侧图标统一 20px 方块 + 16px 图标：
+agent 切换去掉内边距 / 外层 `min-w-6` / svg 的 `mr-px`，发送按钮去掉 `[&>svg]:[scale:0.9375]`，实测图标间距 8/8px。
+**定时器每次注入都要重建**：只存 CSS 到共享状态不够，旧定时器闭包里的旧 `decorate()` 也会和新逻辑打架
+（实测旧版 addChevron 把 viewBox 改回去）。
+多窗口时 `cdp.mjs` 的 `workbench.html` 只命中第一个窗口，用窗口标题（如 `devin-cursor-theme`）选目标。
 
 ## Cursor 排版复刻来源
 
@@ -189,23 +274,48 @@ Cursor 工具卡片原文：
 | 默认 editor 模式 | 工作区存储 `workbench.mode` 键（scope 1）。值为 `"editor"` 会被 `normalizeStoredMode` 归一成 undefined（= editor）；`"windsurf-agent-window"` 才是 agent。本工作区**无该键**，已是 editor |
 | 切回 editor 的命令 | `workbench.action.toggleWindsurfAgentWindow` |
 | 编辑模式判定 | `.titlebar-container` 带 `windsurf-agent-window-mode` 类 = agent 模式 |
+| 禁用 Devin 自动更新 | 用户 settings.json 写 `"update.mode": "none"`；一键 `node tools/disable-updates.mjs`（`--revert` 还原） |
 
 **注入 JS 无法改 VS Code 设置**：workbench 页面的 `window.vscode` 只是 Electron 的 preload 对象
 （`ipcRenderer` / `process` / `context`），没有 `commands` / `configuration`。
+
+### 禁用 Devin 自动更新（第 30 段）
+
+主题依赖 `custom-ui-style` 扩展 patch 过的 `workbench.desktop.main.css` 与 `product.json`
+（应用目录里能看到 `.custom-ui-style` 备份文件），**应用升级会覆盖这些文件导致主题失效**，
+所以要关掉自动更新。
+
+- 开关是 VS Code 标准的 `update.mode`（`none` / `manual` / `start` / `default`）。
+- 值为 `none` 时 `getProductQuality()` 直接返回 `undefined`，更新服务在启动时进入 `Disabled`
+  状态（`out/main.js` 日志：`update#ctor - updates are disabled by user preference`）。
+- **machine 作用域**（schema `scope: 1`），只能写在用户 settings.json；
+  写进工作区 `.vscode/settings.json` 会被忽略。
+- 用户 settings.json 位置：macOS `~/Library/Application Support/Devin/User/settings.json`，
+  Windows `%APPDATA%\Devin\User\settings.json`，Linux `~/.config/Devin/User/settings.json`。
+- `tools/disable-updates.mjs` 做文本级编辑（保留注释与排版），改完**重启 Devin Desktop 生效**。
+
+> 区分：Devin **CLI** 的自更新是另一套开关 —— `~/.config/devin/config.json` 里的
+> `"auto_update": false`（仅 user 级；且只对自管理安装生效，随 Devin Desktop 打包的安装会被忽略）。
 
 ## 工具
 
 | 工具 | 用途 |
 |---|---|
-| `tools/cdp.mjs` | 零依赖 CDP 客户端：`list` / `eval` / `evalfile` / `dom` / `shot` / `css` |
+| `tools/cdp.mjs` | 零依赖 CDP 客户端：`list` / `eval` / `evalfile` / `reload` / `dom` / `shot` / `css` |
 | `tools/big-grep.mjs` | 大文件正则搜索（绕过 4MB 限制） |
 | `tools/extract-css.mjs` | 从 CSS 提取类名 / 变量定义 / 规则块 |
 | `tools/list-settings.mjs` | 列出扩展 package.json 的所有配置项 |
 | `tools/read-storage.mjs` | 用 `node:sqlite` 读 state.vscdb |
+| `tools/disable-updates.mjs` | 关闭 / 还原 Devin Desktop 自动更新（写 `"update.mode": "none"`） |
+| `tools/enable-cdp.mjs` | 开启 / 关闭 CDP 调试端口（写 `~/.devin/argv.json` 的 `remote-debugging-port`） |
+| `tools/restart-devin.mjs` | 重启 Devin 并等端口就绪（worker 用 `setsid` 脱离进程树，不会被自己重启掉） |
 | `snippets/*.js` | 各类 DOM 探查与验证脚本，用 `evalfile` 执行 |
 
 CDP 通道：`~/.devin/argv.json` 里的 `"remote-debugging-port": "9222"`
 （**必须是字符串**，源码里 `typeof u=="string"` 才走 `appendSwitch`）。
+用 `node tools/enable-cdp.mjs` 写入、`node tools/enable-cdp.mjs --revert` 关闭（调试完务必关掉，
+端口对本机所有进程开放）。Devin 的 argv.json 白名单里**本来就有** `remote-debugging-port`
+（`out/main.js` 的 `KK()` 里那 5 个），所以不像 Cursor 需要打补丁。
 
 ```powershell
 curl.exe -s http://127.0.0.1:9222/json/version
@@ -245,6 +355,10 @@ node tools/cdp.mjs evalfile workbench.html snippets/verify-all.js
 | 27 | 修掉模式按钮文字被硬编码成 "bypass" 的 bug | ✅ |
 | 28 | 表格样式对齐 Cursor（第 19 段） | ✅ |
 | 29 | 去掉侧边栏 "Explorer" 标题栏（第 20 段） | ✅ |
+| 30 | 禁用 Devin 自动更新（防止升级覆盖被 patch 的 CSS） | ✅ |
+| 31 | 提问卡片（elicitation）给**不透明**底 + 四角 12px 圆角 + 12% 描边，内部字号对齐 14px/22px（第 14.5 段） | ✅ |
+| 32 | 空编辑器欢迎页显示「Recent projects」列表 + View all 搜索打开（第 5 段） | ✅ |
+| 33 | 去掉「Your included … usage quota is exhausted.」用量耗尽红色横幅 | ✅ |
 
 侧边栏结构（`#workbench.parts.sidebar` 的三个直接子元素）：
 
@@ -372,7 +486,12 @@ table { border-collapse: separate; border-spacing: 0; width: max-content; min-wi
 ### ⚠️ 模式按钮：不能用 CSS 硬编码文字
 
 早期版本用 `[data-devin-perm]::after { content: "bypass" }` 缩写文字，结果**切到 ask / plan 模式也一直显示 bypass**。
-正确做法：CSS 只负责样式，文字缩写放在 `custom.js` 里，只对 `^Bypass\s+Permissions$` 生效。
+正确做法：CSS 只负责样式，文字改写放在 `custom.js` 里，只对 `^Bypass\b` 生效。
+
+模式名来自 nls（`out/nls.messages.js`）：`Bypass Permissions / Auto Mode / Ask Before Edits / Plan Mode / Edit Automatically`。
+现在把 `Bypass Permissions` 显示成 **`Agent`**（对齐 Cursor 的 Agent 药丸），其余模式原样保留。
+注意 `devin-ui.js` 的内容会被 `custom-ui-style` 打包进
+`out/vs/code/electron-browser/workbench/external.module.js`（所以那个文件里也能 grep 到自己的源码）。
 
 另外模式按钮的标记也改成**结构定位**（左侧工具栏里唯一被 `div` 包着的那颗），
 不再按文字匹配 —— 否则换个模式名就标不上，药丸底色会消失。
@@ -438,6 +557,173 @@ svg  [1200x1530, opacity 0.5]
 | 外层背景层 | `.bg-bg-elevated-wax` 设 `display:none`，它原本用 `inset-0` 把变更条一起包住 |
 
 实测对齐结果：条 `x=993 w=515`，输入框 `x=993 w=515`，条底 `816` = 输入框顶 `816`。
+
+### 提问卡片（elicitation）的不透明底
+
+现象：红框那块（问题 + A/B 选项）和消息列表同色，看不出边界，用户报"面板背景是透明的"。
+**不是透出编辑器** —— 用像素采样确认过：框内和框上方都是 `rgb(25,26,26)`，完全同色，
+框内也没有任何外来文字像素。真正的问题是**卡片自己没有面**（见上面的 band 槽位说明）。
+
+规则（第 14.5 段）：
+
+```css
+/* 卡片本体：不透明面板底 + 12% 描边 + 12px 四角圆角 */
+.chat-client-root div[class*="bottom-full"] [data-band-item]:has(> div > div.flex.flex-col:not(.min-w-0)) {
+  background-color: var(--ds-surface-bg) !important;   /* 不透明：4% 填充 + 面板色 = rgb(32,33,34) */
+  border: 1px solid var(--ds-stroke-2) !important;     /* 12% 描边（原来 8%，太淡） */
+  border-bottom: 1px solid var(--ds-stroke-2) !important;
+  border-radius: var(--ds-radius-xl) !important;       /* 四角 12px（原来只圆上角） */
+  padding-block: 8px !important;                       /* 补回被 [class*="py-1.5"] 清零的内边距 */
+}
+```
+
+同段还顺带把卡片内部对齐到主题的字号（App 默认比主题小一号）：
+
+| 元素 | App 原值 | 改为 |
+|---|---|---|
+| 问题 / 选项 / "Something else" 输入框 | 13px / 16px | 14px / 22px（`--ds-text-size` / `--ds-line-height`） |
+| 选项描述（第二行小字） | 13px / 16px | 13px / 18px（保留次级层级） |
+| 选项行（`[role="button"]`） | `min-h-6` = 24px | 28px（正文行高 22px 后 24px 太挤） |
+| Next / Submit 主按钮 | 蓝色实心 `rgb(41,122,160)` | 中性药丸 `--ds-pill-bg`（和 Accept all 一致） |
+
+> 为什么改成四角圆角：卡片浮在变更条上方，而变更条左右各内缩 9px。
+> 只圆上角时卡片下缘是「方角 + 没有下描边」，紧贴着一条更窄的圆角药丸 —— 看着像被切掉一半。
+> 四角圆角 + 四周描边后，卡片是一块完整的独立面板，和工具卡片同一套语言。
+> （这条是照用户选定的「不透明面板底」方案做的，不是照抄 App 默认。）
+
+### ⚠️ 半透明 ≠ 不透明（第一版改错的地方）
+
+第一版用了 `var(--ds-fill-faint)`（= `color-mix(前景色 4%, transparent)`），因为"要和输入框填充一致"。
+**这是错的**：4% 填充的 alpha 就是 0.04，等于 96% 透明，只是把背后内容压暗一点点而已。
+输入框在滚动区**外面**、背后没内容，所以半透明看着没问题；但卡片是 `absolute bottom-full`
+**浮在消息列表上方**的，消息文字会原样从卡片下面透上来（用户截图："透明叠加了"）。
+
+| token | 定义 | 结果 |
+|---|---|---|
+| `--ds-fill-faint` | `color-mix(前景色 4%, transparent)` | `rgba(...,0.04)` 半透明，会透 |
+| `--ds-surface-bg` | `color-mix(前景色 4%, var(--vscode-sideBar-background))` | 不透明 `rgb(32,33,34)`，实测 alpha = 1 |
+
+结论：**凡是要盖住内容的浮层，底色必须给不透明的底**（把 transparent 换成面板色）。
+只有贴在实心表面上、不需要遮盖内容的元素才能用半透明填充。
+
+> 描边可以照旧用 8% alpha 的 `--ds-stroke-3`：`background-clip` 默认是 `border-box`，
+> 背景会铺到描边下面，所以描边叠的是元素自己的不透明底，不会透出背后内容。
+> （一开始以为描边也会透，把描边改成不透明，实测证明是多余的，已还原。）
+
+**怎么验证的**（卡片只在 elicitation 请求挂起时渲染，没法随时抓）：
+
+1. 起一个后台轮询器，反复 `cdp.mjs evalfile` 找带唯一标记的文本；
+2. 用 `ask_user_question` 复现卡片（同一个 ACP elicitation 组件），轮询器在卡片显示期间抓到
+   完整祖先链 + 截图，写进 `/tmp/card-dump.json`；
+3. 负向测试：现在只有变更条在场，任何候选选择器命中数必须为 0（避免误伤变更条）；
+4. 正向测试：**按抓到的真实类名在真实槽位里合成一张卡片**，读计算样式 + 截图看观感；
+5. 清理合成元素与临时 `<style>`，再写进交付文件。
+
+> 踩坑 1：合成元素里 `el.className = ''` 不会写出 `class` 属性，所以 `div:not([class])` 能命中；
+> 但 React 渲染的空类名可能写成 `class=""`（属性存在），选择器就失效了。
+> 最终改成 `div:not(.min-w-0)` 这种不依赖属性存在性的判别式。
+>
+> 踩坑 2（更贵）：**合成测试当时"通过"了，但漏掉了真正的问题**。我只读了卡片的计算样式
+> （看到有 `background-color` 就以为成了），没检查"背后有内容时会怎样"。合成卡片时消息列表
+> 那段恰好是空的，于是透不透根本看不出来。正确的合成测试要**在卡片后面塞一段高饱和文字**
+> （`position:absolute; inset:0`，DOM 顺序放在卡片之前 = 绘制在卡片之下），
+> 然后采样卡片矩形内的像素：红字像素必须为 0（只允许圆角圆弧外侧的缺口）。
+> 验证方法本身也会骗人 —— 结论要能回答"如果它坏了会怎样"，而不是"它看起来对"。
+
+> 另外：卡片只在有 band item 时才渲染，槽位空着会 `[&:not(:has([data-band-item]>*))]:hidden`
+> 变成 `display:none`，合成测试前要先 `slot.style.setProperty('display','flex','important')` 强制打开。
+
+### 空编辑器欢迎页的「Recent projects」（第 5 段）
+
+Devin 的空编辑器不是 VS Code 的 watermark，而是 windsurf-chat-client 里的 React 组件，
+挂在 `.windsurf-welcome-container`（同时带 `chat-client-root` / `dark`）。结构：
+
+```
+.windsurf-welcome-container
+  #chat  (700px 宽，整块垂直居中)
+    div.relative.flex.h-full.w-full.flex-col
+      div.relative.flex.w-full.flex-col.items-center.px-2      ← 居中列
+        svg  (Devin logo 64x64，absolute bottom-full mb-6)
+        div.flex.w-full.flex-col.gap-1 → .group/beard-band     ← composer（本主题隐藏）
+      div.absolute.left-0.top-full.flex.w-full.flex-col.gap-6.px-2.pt-6   ← 本段主角
+        div.flex.w-full.gap-2               → 三张卡片
+        div.flex.w-full.flex-col.gap-1.5    → 标题行 + 列表
+      div.absolute.inset-x-0.bottom-0       → "Pro • Settings"
+```
+
+**这个区块本来就自带「最近项目」UI**（bundle 里的 `i0F` 组件，
+`out/vs/workbench/windsurf-chat-client/index.js`），不需要自己造：
+
+| 元素 | 行为 |
+|---|---|
+| 标题行（下拉） | `Recent sessions` ⇄ `Recent projects`，切换写偏好 `windsurf.editorWelcome.recentView` |
+| `View all` | `dispatch("openRecent")` → `workbench.action.openRecent`（可搜索的最近项目选择器） |
+| 列表项 | `button[title=<绝对路径>]`，点击 → `openRecentProject(path)` 真正打开该文件夹 |
+| 三张卡片 | `pickDirectory`（目录选择器，里面也带最近项目）/ `git.clone` / `openSSH` |
+
+细节：
+
+- 偏好存在**全局** storage（`User/globalStorage/state.vscdb` 的 ItemTable）。
+  `getRecentView()` 只认 `"projects"`，其他值一律当 sessions，所以默认就是 sessions。
+- 列表最多 5 条：bundle 里 `i0J=5` + `.slice(0,5)`，改不了。
+- 数据来自 `workspacesService.getRecentlyOpened()`；为空时回退
+  `IMPORT_VS_CODE_RECENT_WORKSPACES`（把 VS Code 的最近工作区导入过来）。
+- 三张卡片和列表同属 `.absolute.top-full` 这个区块 —— 原来是整块 `display:none`，
+  所以「去掉 Recent sessions」时把它们一起藏了。现在整块显示，只靠 JS 种默认视图。
+
+**本主题的做法**：CSS 不再隐藏 `.absolute.top-full`；默认视图由 `seedRecentView()` 种成
+projects —— 注入的 JS 拿不到 `storageService`（`window.vscode` 只有 preload 对象），
+只能模拟一次下拉选择：用完整指针事件序列点开标题行（见「坑 17」），然后**每 50ms 轮询**
+portal 里文字为 `Projects` 的叶子 span，一出现就点它的**父节点**（onClick 挂在那儿）。
+用轮询而不是等固定时长，是为了让菜单露在外面的时间尽量短。
+
+> 只种一次：成功后写 `localStorage['devin-ui.recent-view-seeded']`。
+> 之后用户手动切回 Sessions 不会再被改回去（实测：切回 sessions → 硬重载 → 仍是 sessions）。
+> 下拉没打开时最多重试 3 次，避免反复弹菜单。
+
+验证：`node tools/cdp.mjs evalfile "Devin" snippets/verify-welcome.js`
+（`"Devin"` = 无文件夹的窗口标题；多窗口时别用 `workbench.html`，只命中第一个）。
+
+### custom-ui-style 的更新链路（实测 0.7.2 / macOS）
+
+扩展**不是**实时读 `~/.devin/devin-ui.js`，而是把它**烘焙**进应用目录里的生成文件：
+
+```
+out/vs/code/electron-browser/workbench/
+  workbench.html                 ← 被打上 <!-- External Style/Script --> 标记
+  external.css                   ← imports 里 .css 的内容
+  external.js                    ← .js 的内容
+  external.module.js             ← 我们的 devin-ui.js 在这（被判定成 module）
+  workbench.custom-ui-style.html ← 原始 html 备份
+```
+
+`workbench.html` 里的注入点：
+
+```html
+<link rel="stylesheet" href="./external.css"></link>
+<script src="./external.js"></script>
+<script src="./external.module.js" type="module"></script>
+```
+
+> **修正早前记录**：以前写过「改完 `devin-ui.js` 不用手动 Reload，样式会自己更新」——
+> 那是错的（至少 0.7.2 / macOS 上不成立）。实测多次 `location.reload()` 之后
+> `external.module.js` 的 mtime 仍是手工写入的时间，说明扩展只在**激活时**和
+> `Custom UI Style: Reload` 命令里跑 `patch()`。
+
+所以：
+
+- 改完 `~/.devin/devin-ui.js` 必须执行一次 `Custom UI Style: Reload`（或重启 Devin）才生效。
+- 调试时不想敲命令面板，用两步法（省一次重启）：
+  ```bash
+  # 1) 手动烘焙：模拟扩展的 patch（保留它写的 // <源文件路径> 头）
+  { printf '// %s\n' "$HOME/.devin/devin-ui.js"; cat "$HOME/.devin/devin-ui.js"; } \
+    > "/Applications/Devin.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/external.module.js"
+  # 2) 硬重载
+  node tools/cdp.mjs reload "Devin"
+  ```
+- **`location.reload()` 不够**：渲染进程会缓存 `external.module.js`，新脚本读不到。
+  必须 `Page.reload({ignoreCache:true})`，也就是 `tools/cdp.mjs reload <target>`。
+- 交付给别人的路径不变，还是 `Custom UI Style: Reload`。
 
 ## 待办
 

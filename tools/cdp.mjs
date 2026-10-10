@@ -122,6 +122,19 @@ switch (cmd) {
     break;
   }
 
+  case 'reload': {
+    // 硬重载：custom-ui-style 注入的 external.module.js 会被渲染进程缓存，
+    // 普通 location.reload() 仍拿旧脚本，必须 ignoreCache 才读得到磁盘上的新内容。
+    const [pattern] = args;
+    if (!pattern) throw new Error('usage: reload <targetPattern>');
+    await withTarget(pattern, async (cdp) => {
+      await cdp.send('Page.enable');
+      await cdp.send('Page.reload', { ignoreCache: true });
+    });
+    console.log('reloaded (ignoreCache)');
+    break;
+  }
+
   case 'shot': {
     const [pattern, outFile] = args;
     if (!pattern || !outFile) throw new Error('usage: shot <targetPattern> <out.png>');
@@ -186,6 +199,7 @@ switch (cmd) {
         '  list',
         '  eval <targetPattern> "<js>"',
         '  evalfile <targetPattern> <file.js>',
+        '  reload <targetPattern>',
         '  shot <targetPattern> <out.png>',
         '  dom  <targetPattern> <selector> [depth]',
         '  css  <targetPattern> <cssFile|inline css>',

@@ -58,10 +58,11 @@
     '  display: none !important;',
     '}',
 
-    '/* ===== 5. 去掉欢迎页的 Recent sessions 区块 ===== */',
-    '.windsurf-welcome-container .absolute.top-full {',
-    '  display: none !important;',
-    '}',
+    '/* ===== 5. 欢迎页（空编辑器）的「Recent projects」区块：保持可见 =====',
+    '   这里原本把整个区块 display:none（那时不想要 Recent sessions）。',
+    '   区块内容是：三张卡片（Open project / Clone repository / Connect via SSH）',
+    '   + 「Recent projects」列表 + 右侧 View all。',
+    '   默认视图由本文件的 seedRecentView() 种成 projects，不需要 CSS 参与。 */',
 
     '/* ===== 6. 输入框内那层画描边的 svg =====',
     '   描边改由第 14 段的真实 border 负责，所以这里把这个 svg 隐藏掉。 */',
@@ -151,6 +152,9 @@
     '  --ds-stroke-3: color-mix(in srgb, var(--vscode-editor-foreground) 8%, transparent);',
     '  --ds-stroke-strong: color-mix(in srgb, var(--vscode-editor-foreground) 20%, transparent);',
     '  --ds-fill-faint: color-mix(in srgb, var(--vscode-editor-foreground) 4%, transparent);',
+    '  /* 不透明版：同样的 4% 填充，但底换成不透明的面板色 —— 给浮在消息列表上方的层用。',
+    '     半透明的 4% 等于 96% 透明，消息文字会从下面透上来。实测 = rgb(32,33,34) */',
+    '  --ds-surface-bg: color-mix(in srgb, var(--vscode-editor-foreground) 4%, var(--vscode-sideBar-background));',
     '  --ds-bubble-bg: color-mix(in srgb, #808080 13.5%, transparent);',
     '  --ds-text-secondary: color-mix(in srgb, var(--vscode-editor-foreground) 74%, transparent);',
     '  --ds-text-tertiary: color-mix(in srgb, var(--vscode-editor-foreground) 60%, transparent);',
@@ -302,8 +306,29 @@
     '.chat-client-root [data-devin-agent-switch] > span {',
     '  display: none !important;',
     '}',
+    '/* 收成和其他图标按钮一样的 20x20 方块，右侧图标间距才会相等',
+    '   （原来左右 4px 内边距 + 外层 min-w-6，比别的按钮宽 7px） */',
     '.chat-client-root [data-devin-agent-switch] {',
-    '  padding-inline: 4px !important;',
+    '  padding: 0 !important;',
+    '  width: 20px !important;',
+    '  min-width: 20px !important;',
+    '  justify-content: center !important;',
+    '}',
+    '.chat-client-root div:has(> [data-devin-agent-switch]) {',
+    '  min-width: 0 !important;',
+    '}',
+    '/* 右侧图标统一 16px 居中：agent 图标自带 mr-px（隐藏的 span 仍算兄弟），',
+    '   发送图标被 [&>svg]:[scale:0.9375] 缩成 15px */',
+    '.chat-client-root button[data-devin-agent-switch] > svg {',
+    '  margin: 0 !important;',
+    '}',
+    '.chat-client-root .group\\/beard-band div.grid.flex-1 > button > svg {',
+    '  scale: 1 !important;',
+    '}',
+
+    '/* 4) 去掉语音输入按钮（录音中 aria-label 会变成 Stop recording，一并匹配） */',
+    '.chat-client-root .group\\/beard-band button[aria-label*="recording" i] {',
+    '  display: none !important;',
     '}',
 
     '/* ===== 12. 卡片 / diff / 文件变更条对齐 Cursor =====',
@@ -413,6 +438,13 @@
     '  opacity: 0.55;',
     '  pointer-events: none;',
     '}',
+    '/* viewBox 已横向裁到 10 宽，箭头两侧不再留 ~4px 空白。',
+    '   按钮自带 [&_svg]:!size-4 和 [&_svg:last-child]:ml-[2px]，选择器要更具体才压得住 */',
+    '.chat-client-root button > svg.devin-chevron.devin-chevron {',
+    '  width: 10px !important;',
+    '  height: 16px !important;',
+    '  margin-left: 0 !important;',
+    '}',
 
     '/* ===== 14. 变更条与输入框（对着 Cursor 的实测值抄）=====',
     '   通过 CDP 连 Cursor 3.20.21 读到的计算样式：',
@@ -452,6 +484,49 @@
     '  min-height: 27px !important;',
     '}',
 
+    '/* ===== 14.5 提问卡片（选项工具弹的那张，ACP elicitation）=====',
+    '   它和文件变更条共用 composer 上方那个 absolute bottom-full 槽位',
+    '   （app 里叫 eyebrow row：div[data-eyebrow-row] > div.px-1.5 > motion.div > [data-band-item]）。',
+    '   槽位在 composer 的毛玻璃层之外，卡片默认只有 4% 填充 + 8% 描边，',
+    '   压在消息列表上像一层发灰的虚影；而且只有上圆角，下缘是断的。',
+    '   这里按工具卡片的规格重做：不透明面板底 + 12% 描边 + 12px 四角圆角。',
+    '   底色必须是**不透明**的 --ds-surface-bg（4% 填充 + 面板色），',
+    '   半透明的 --ds-fill-faint 等于 96% 透明，消息文字会从卡片下面透上来（踩过）。',
+    '   结构（index.js 的 rP2 / rP3）：',
+    '     [data-band-item] > div（rP3 的 onClick 包装，class 为空）> div.flex.flex-col（rP2 卡片根）',
+    '   变更条则多一层带 min-w-0 的 flex-col + .gap-1，据此区分，实测只命中卡片。',
+    '   注意别用 div:not([class]) 判空类名 —— React 可能渲染出 class=""。 */',
+    '.chat-client-root div[class*="bottom-full"] [data-band-item]:has(> div > div.flex.flex-col:not(.min-w-0)) {',
+    '  background-color: var(--ds-surface-bg) !important;',
+    '  border: 1px solid var(--ds-stroke-2) !important;',
+    '  border-bottom: 1px solid var(--ds-stroke-2) !important;',
+    '  border-radius: var(--ds-radius-xl) !important;',
+    '  padding-block: 8px !important;',
+    '}',
+    '/* 卡片内文字统一到主题的 14px/22px（App 默认 13px/16px） */',
+    '.chat-client-root div[class*="bottom-full"] [data-band-item]:has(> div > div.flex.flex-col:not(.min-w-0)) .text-\\[13px\\] {',
+    '  font-size: var(--ds-text-size) !important;',
+    '  line-height: var(--ds-line-height) !important;',
+    '}',
+    '/* 选项描述（第二行小字）保留次级层级：13px/18px */',
+    '.chat-client-root div[class*="bottom-full"] [data-band-item]:has(> div > div.flex.flex-col:not(.min-w-0)) .text-xs {',
+    '  font-size: 13px !important;',
+    '  line-height: 18px !important;',
+    '}',
+    '/* 选项行：正文行高提到 22px 后 24px 太挤，放到 28px（对齐工具卡片头部高度） */',
+    '.chat-client-root div[class*="bottom-full"] [data-band-item]:has(> div > div.flex.flex-col:not(.min-w-0)) [role="button"] {',
+    '  min-height: 28px !important;',
+    '}',
+    '/* 卡片里的主按钮（Next / Submit）不用蓝色实心，改成和 Accept all 一致的中性药丸 */',
+    '.chat-client-root div[class*="bottom-full"] [data-band-item]:has(> div > div.flex.flex-col:not(.min-w-0)) form button,',
+    '.chat-client-root div[class*="bottom-full"] [data-band-item]:has(> div > div.flex.flex-col:not(.min-w-0)) .mt-2.flex.items-center.justify-end > button {',
+    '  background-color: var(--ds-pill-bg) !important;',
+    '  color: var(--vscode-editor-foreground) !important;',
+    '  border-radius: 6px !important;',
+    '  padding: 2px 8px !important;',
+    '  font-size: 12px !important;',
+    '  line-height: 16px !important;',
+    '}',
     '/* ===== 15. 聊天内容深度对齐 Cursor（CDP 实测值）=====',
     '   实测（Cursor 3.20.21）：',
     '     用户气泡 .composer-human-message  : radius 12px, border 1px @12%, bg rgb(77,77,77) @13.5%',
@@ -539,8 +614,10 @@
     '  min-height: 20px !important;',
     '}',
 
-    '/* 图标类按钮（上下文用量 / 麦克风 / 发送）：宽高都收到 20px */',
-    '.chat-client-root .group\\/beard-band div.cursor-text.border .flex.flex-wrap.items-center button[class*="size-6"] {',
+    '/* 图标类按钮（上下文用量 / 麦克风 / 发送）：宽高都收到 20px。',
+    '   排除模式药丸 —— 窄面板下 app 把药丸换成同为 size-6 的「只有图标」按钮，',
+    '   钉死 20px 会把补回来的文字裁掉（见下面 :has(> [data-devin-label]) 那条）。 */',
+    '.chat-client-root .group\\/beard-band div.cursor-text.border .flex.flex-wrap.items-center button[class*="size-6"]:not([data-devin-perm]) {',
     '  width: 20px !important;',
     '  height: 20px !important;',
     '}',
@@ -548,7 +625,35 @@
     '/* bypass 药丸：底色对齐 Cursor 的 14%，左右内边距对齐 8px */',
     '.chat-client-root [data-devin-perm] {',
     '  background-color: color-mix(in srgb, var(--vscode-editor-foreground) 14%, transparent) !important;',
-    '  padding: 0 8px !important;',
+    '  padding: 0 4px 0 8px !important;',
+    '}',
+
+    '/* 左侧药丸按钮（模式 / 强度）文字必须完整显示：不收缩、不截断、去掉 max-w 上限。',
+    '   只作用于药丸，模型名照旧可截断；控制行不换行 */',
+    '.chat-client-root div:has(> [data-devin-perm]),',
+    '.chat-client-root [data-devin-perm] {',
+    '  flex-shrink: 0 !important;',
+    '  max-width: none !important;',
+    '}',
+    '.chat-client-root [data-devin-perm] > span {',
+    '  flex-shrink: 0 !important;',
+    '  overflow: visible !important;',
+    '  text-overflow: clip !important;',
+    '}',
+    '/* 窄面板下 app 把药丸整个换成「只有图标」的 size-6 按钮（文字直接不在 DOM 里，',
+    '   JS 会把文字补回来）。补回来之后要还原成药丸布局：width auto + 内边距 + gap，',
+    '   否则被 size-6 那条规则钉死在 20px 宽，文字被裁掉。 */',
+    '.chat-client-root .group\\/beard-band div.cursor-text.border [data-devin-perm]:has(> [data-devin-label]) {',
+    '  width: auto !important;',
+    '  height: 20px !important;',
+    '  min-height: 20px !important;',
+    '  padding: 0 4px 0 8px !important;',
+    '  gap: 3px !important;',
+    '}',
+
+    '/* 模型名恢复可收缩 + 省略号截断，控制行禁止换行 */',
+    '.chat-client-root div.flex-1:has(> div > [data-devin-perm]) {',
+    '  flex-wrap: nowrap !important;',
     '}',
 
     '/* ===== 18. 输入框内部规格 + 列表样式对齐 Cursor =====',
@@ -572,6 +677,13 @@
     '.chat-client-root .group\\/beard-band div.cursor-text.border .text-13 {',
     '  font-size: 14px !important;',
     '  line-height: 22px !important;',
+    '}',
+
+    '/* 占位符单行显示：Slate 给的是 pre-wrap + 绝对定位，窄面板下会折到第二行被裁掉 */',
+    '.chat-client-root .group\\/beard-band div.cursor-text.border [data-slate-placeholder] {',
+    '  white-space: nowrap !important;',
+    '  overflow: hidden !important;',
+    '  text-overflow: ellipsis !important;',
     '}',
 
     '/* 控制行左右两组之间的间距：8px -> 4px */',
@@ -772,11 +884,17 @@
   // 给按钮右侧补一个下拉箭头（Cursor 的 Agent / 模型选择器右侧都有小 v）。
   // CSP 禁 innerHTML，必须用 createElementNS 构建 svg。
   function addChevron(host) {
-    if (host.querySelector('.devin-chevron')) return;
+    // 横向裁掉箭头两侧的留白（path 横跨 x=4.5~11.5）
+    var VIEWBOX = '3 0 10 16';
+    var old = host.querySelector('.devin-chevron');
+    if (old) {
+      if (old.getAttribute('viewBox') !== VIEWBOX) old.setAttribute('viewBox', VIEWBOX);
+      return;
+    }
     var NS = 'http://www.w3.org/2000/svg';
     var svg = document.createElementNS(NS, 'svg');
     svg.setAttribute('class', 'devin-chevron');
-    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('viewBox', VIEWBOX);
     svg.setAttribute('width', '12');
     svg.setAttribute('height', '12');
     svg.setAttribute('aria-hidden', 'true');
@@ -789,6 +907,78 @@
     path.setAttribute('stroke-linejoin', 'round');
     svg.appendChild(path);
     host.appendChild(svg);
+  }
+
+  // 模式名的改写规则（"Bypass Permissions" -> "Agent"）
+  function modeLabel(text) {
+    return /^Bypass\b/i.test(text) ? 'Agent' : text;
+  }
+
+  // 窄窗口下 app 会把药丸文字整个从 DOM 里删掉（React 条件渲染，只留图标），
+  // CSS 救不回来 —— 只能自己把文字补回去。模式名没法凭空得知，所以用
+  // 图标的 path d 当键，记住「图标 -> 模式名」的映射（存 localStorage 跨重启）。
+  var LABEL_STORE = 'devin-ui.perm-labels';
+
+  function loadPermLabels() {
+    try {
+      return JSON.parse(localStorage.getItem(LABEL_STORE) || '{}');
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function savePermLabels(map) {
+    try {
+      localStorage.setItem(LABEL_STORE, JSON.stringify(map));
+    } catch (e) {
+      /* 隐私模式等场景下写不了，忽略 */
+    }
+  }
+
+  function iconKey(el) {
+    var svg = el.querySelector('svg:not(.devin-chevron)');
+    var path = svg && svg.querySelector('path');
+    var d = path && path.getAttribute('d');
+    return d ? d.slice(0, 80) : '';
+  }
+
+  // 从打开的模式菜单里学「图标 -> 模式名」（菜单项结构：图标 + 标题 + 说明）
+  function learnFromMenu(map) {
+    var items = document.querySelectorAll('[role="menuitem"]');
+    for (var i = 0; i < items.length; i++) {
+      var title = items[i].querySelector('span.break-words') || items[i].querySelector('span');
+      var key = iconKey(items[i]);
+      var text = title ? (title.textContent || '').trim() : '';
+      if (key && text) map[key] = modeLabel(text);
+    }
+  }
+
+  // 把文字补回药丸（app 自己渲染了 span 时不动）
+  function restorePermLabel(pill, map) {
+    var own = pill.querySelector('[data-devin-label]');
+    var span = pill.querySelector('span');
+    if (span) {
+      var text = modeLabel((span.textContent || '').trim());
+      if (span.textContent !== text) span.textContent = text;
+      var seen = iconKey(pill);
+      if (seen && map[seen] !== text) {
+        map[seen] = text;
+        savePermLabels(map);
+      }
+      return;
+    }
+    var label = map[iconKey(pill)];
+    if (!label) return;
+    if (!own) {
+      own = document.createElement('span');
+      own.setAttribute('data-devin-label', '1');
+      own.className = 'min-w-0 truncate';
+      own.textContent = label;
+      var chevron = pill.querySelector('.devin-chevron');
+      pill.insertBefore(own, chevron || null);
+    } else if (own.textContent !== label) {
+      own.textContent = label;
+    }
   }
 
   function decorate() {
@@ -831,19 +1021,13 @@
       }
     }
 
-    // 模式按钮文字缩写：只把 "Bypass Permissions" 缩成 "Bypass"（首字母大写），
-    // 其他模式（ask / plan / …）原样保留。
-    // 不能用 CSS ::after 硬编码，否则任何模式都会显示同一个词。
-    // React 重渲染会把文字改回去，所以这里每次 tick 都检查一遍。
-    var permHost = band.querySelector('[data-devin-perm]');
-    if (permHost) {
-      var permSpan = permHost.querySelector('span');
-      var permText = permSpan ? (permSpan.textContent || '').trim() : '';
-      // 除了原文字，还要兼容早期版本留下的全小写 "bypass" 残留
-      if (permSpan && (/^Bypass\s+Permissions$/i.test(permText) || permText === 'bypass')) {
-        permSpan.textContent = 'Bypass';
-      }
-    }
+    // 模式药丸：改名（"Bypass Permissions" -> "Agent"）+ 窄窗口下把被 app 删掉的文字补回来。
+    // React 重渲染会把文字改回去 / 删掉，所以这里每次 tick 都检查一遍。
+    var shared = (window.__devinUi = window.__devinUi || {});
+    var permLabels = shared.permLabels || (shared.permLabels = loadPermLabels());
+    learnFromMenu(permLabels);
+    var permPills = band.querySelectorAll('[data-devin-perm]');
+    for (var q = 0; q < permPills.length; q++) restorePermLabel(permPills[q], permLabels);
 
     // 给 模式 / 模型 按钮补上右侧的下拉箭头
     var chevronHosts = band.querySelectorAll('[data-devin-perm], [data-devin-model]');
@@ -861,6 +1045,135 @@
       mark(bars[j], /^Accept/i, 'data-devin-review-btn', 'primary');
       mark(bars[j], /^Reject/i, 'data-devin-review-btn', 'secondary');
       mark(bars[j], /^Quick review/i, 'data-devin-review-btn', 'secondary');
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // 去掉 "Your included ... usage quota is exhausted." 用量耗尽横幅
+  //
+  // 聊天客户端把这类提示渲染成 banner 组件：根节点下带一个
+  // [data-slot="banner-icon"] 的图标槽。红色是 error 变体（额度彻底用尽），
+  // 橙色是 warning 变体（正在用额外额度）。两者文案都含
+  // "usage quota is exhausted."，这里一并隐藏。
+  // 注意 CSP 禁 innerHTML，且这里是改现有节点，直接用 style 置灰即可。
+  // --------------------------------------------------------------------------
+  var QUOTA_BANNER_RE = /usage quota is exhausted/i;
+
+  function hideQuotaBanner() {
+    var icons = document.querySelectorAll('[data-slot="banner-icon"]');
+    for (var i = 0; i < icons.length; i++) {
+      var banner = icons[i].parentElement;
+      if (!banner) continue;
+      if (QUOTA_BANNER_RE.test(banner.textContent || '')) {
+        banner.style.setProperty('display', 'none', 'important');
+      }
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // 欢迎页（空编辑器）的 Recent projects 视图
+  //
+  // Devin 自带这个区块，标题行是个下拉：Sessions / Projects，默认停在 Sessions。
+  // 偏好是全局持久化的（storageService 键 windsurf.editorWelcome.recentView，
+  // 落在全局 state.vscdb 的 ItemTable 里），而注入的 JS 拿不到 storageService，
+  // 所以只能模拟一次下拉选择把偏好种成 "projects"。
+  //
+  // 只种一次：成功后记进 localStorage，之后用户再切回 Sessions 也不会被改回去。
+  // --------------------------------------------------------------------------
+  var RECENT_VIEW_SEEDED = 'devin-ui.recent-view-seeded';
+
+  // 用完整指针事件序列点一下。React 的 onClick 只监听 click，
+  // 但 Base UI 的 Popover 靠 pointerdown 打开，只 dispatch click 打不开。
+  function realClick(el) {
+    var r = el.getBoundingClientRect();
+    var types = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'];
+    for (var i = 0; i < types.length; i++) {
+      var pointer = types[i].indexOf('pointer') === 0;
+      var init = {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        button: 0,
+        clientX: r.left + r.width / 2,
+        clientY: r.top + r.height / 2,
+      };
+      if (pointer) {
+        init.pointerId = 1;
+        init.isPrimary = true;
+        init.pointerType = 'mouse';
+      }
+      el.dispatchEvent(new (pointer ? PointerEvent : MouseEvent)(types[i], init));
+    }
+  }
+
+  function seedRecentView() {
+    var shared = (window.__devinUi = window.__devinUi || {});
+    if (shared.recentViewSeeded || shared.recentViewSeeding) return;
+
+    var welcome = document.querySelector('.windsurf-welcome-container');
+    if (!welcome) return;
+
+    // 已经是 projects 视图 => 直接收工
+    if (/Recent projects/.test(welcome.textContent || '')) {
+      markRecentViewSeeded(shared);
+      return;
+    }
+
+    var btns = welcome.querySelectorAll('button');
+    var trigger = null;
+    for (var i = 0; i < btns.length; i++) {
+      if (/^Recent sessions$/.test((btns[i].textContent || '').trim())) {
+        trigger = btns[i];
+        break;
+      }
+    }
+    if (!trigger) return;
+
+    var seeded = false;
+    try {
+      seeded = localStorage.getItem(RECENT_VIEW_SEEDED) === '1';
+    } catch (e) {
+      /* 隐私模式等场景下读不了，忽略 */
+    }
+    if (seeded) {
+      markRecentViewSeeded(shared);
+      return;
+    }
+
+    shared.recentViewSeeding = true;
+    shared.recentViewAttempts = (shared.recentViewAttempts || 0) + 1;
+    realClick(trigger);
+
+    // 菜单是 portal 渲染的，从整个 document 里找文字为 "Projects" 的叶子 span，
+    // 点它的父节点（onClick 挂在那儿）。轮询而不是等固定时长 —— 菜单一出现就点，
+    // 尽量缩短它露在外面的时间（种偏好只发生一次，但没必要让人看见菜单闪一下）。
+    var waited = 0;
+    var poll = setInterval(function () {
+      waited += 50;
+      var spans = document.querySelectorAll('span');
+      for (var j = 0; j < spans.length; j++) {
+        var el = spans[j];
+        if (el.children.length || (el.textContent || '').trim() !== 'Projects') continue;
+        clearInterval(poll);
+        realClick(el.parentElement);
+        markRecentViewSeeded(shared);
+        return;
+      }
+      if (waited < 1000) return;
+      // 下拉始终没打开：下个 tick 再试，但最多 3 次，免得反复弹菜单
+      clearInterval(poll);
+      shared.recentViewSeeding = false;
+      if (shared.recentViewAttempts >= 3) markRecentViewSeeded(shared);
+    }, 50);
+  }
+
+  function markRecentViewSeeded(shared) {
+    shared.recentViewSeeded = true;
+    shared.recentViewSeeding = false;
+    try {
+      localStorage.setItem(RECENT_VIEW_SEEDED, '1');
+    } catch (e) {
+      /* 忽略 */
     }
   }
 
@@ -895,16 +1208,20 @@
     injectStyle(CSS);
     mountToggle();
     decorate();
+    hideQuotaBanner();
+    seedRecentView();
     checkActivityBarLocation();
 
     // workbench 会重建 DOM，用低频轮询兜底重新挂载（已挂载时是廉价空操作）
-    if (!state.timer) {
-      state.timer = setInterval(function () {
-        injectStyle(state.css);
-        mountToggle();
-        decorate();
-      }, 800);
-    }
+    // 每次注入都重建定时器：旧定时器闭包里是旧版 decorate()，留着会和新逻辑来回打架
+    if (state.timer) clearInterval(state.timer);
+    state.timer = setInterval(function () {
+      injectStyle(state.css);
+      mountToggle();
+      decorate();
+      hideQuotaBanner();
+      seedRecentView();
+    }, 800);
   }
 
   if (document.readyState === 'loading') {
