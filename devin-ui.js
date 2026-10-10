@@ -832,6 +832,167 @@
     '[id="workbench.parts.sidebar"] .monaco-pane-view .split-view-container > .split-view-view:nth-child(3) {',
     '  top: calc(100% - 22px) !important;',
     '}',
+    '/* ===== 22. 聊天区高保真对齐 Cursor（实测计算样式）=====',
+    '   Devin 的 .prose-ds-dense-v3 把段落压成 13px/18px、字距 -0.08px；工具卡头 29px、',
+    '   用户气泡内边距 14px。Cursor 实测：正文 14/22 字距 normal、卡片与面板同色、气泡 rgb(46,46,46)。',
+    '   这里全部顶掉。聊天底色不改，跟随主题。',
+    '   颜色用 #ccc 的 alpha 版本，避免 editor-foreground 自带 0.9 透明度叠加。 */',
+    '.chat-client-root {',
+    '  --ds-c-stroke: rgba(204, 204, 204, 0.12);',
+    '  --ds-c-tertiary: rgba(204, 204, 204, 0.6);',
+    '  --ds-c-quaternary: rgba(204, 204, 204, 0.36);',
+    '  --ds-c-bubble: rgb(46, 46, 46);',
+    '}',
+
+    '/* 正文：字体族、字距、段落字号行高（p 被 dense 变体压到 13px/18px） */',
+    '.chat-client-root .prose-main.prose-ds {',
+    '  font-family: -apple-system, "system-ui", "PingFang SC", "Hiragino Sans GB", sans-serif !important;',
+    '  letter-spacing: normal !important;',
+    '}',
+    '.chat-client-root .prose-main.prose-ds p,',
+    '.chat-client-root .prose-main.prose-ds li {',
+    '  font-size: 14px !important;',
+    '  line-height: 22px !important;',
+    '}',
+    '/* 段落后紧跟列表：段距 8px（Cursor 实测 p.mb = 8px） */',
+    '.chat-client-root .prose-main.prose-ds p:has(+ ol),',
+    '.chat-client-root .prose-main.prose-ds p:has(+ ul) {',
+    '  margin-bottom: 8px !important;',
+    '}',
+
+    '/* 标题：Cursor h2 = 18.45/26.2、h3 = 17/24.13，字重 590，段前 20.5px、段后 4px */',
+    '.chat-client-root .prose-main.prose-ds > :first-child {',
+    '  margin-top: 0 !important;',
+    '}',
+    '.chat-client-root .prose-main.prose-ds h2 {',
+    '  font-size: 18.452px !important;',
+    '  line-height: 26.2px !important;',
+    '  font-weight: 590 !important;',
+    '  margin: 20.5px 0 4px !important;',
+    '  letter-spacing: normal !important;',
+    '}',
+    '.chat-client-root .prose-main.prose-ds h3 {',
+    '  font-size: 17px !important;',
+    '  line-height: 24.13px !important;',
+    '  font-weight: 590 !important;',
+    '  margin: 20.5px 0 4px !important;',
+    '  letter-spacing: normal !important;',
+    '}',
+    '.chat-client-root .prose-main.prose-ds h4,',
+    '.chat-client-root .prose-main.prose-ds h5 {',
+    '  font-size: 14px !important;',
+    '  line-height: 22px !important;',
+    '  font-weight: 590 !important;',
+    '  margin: 20.5px 0 4px !important;',
+    '  letter-spacing: normal !important;',
+    '}',
+
+    '/* 行内代码：Cursor 内边距 1.5px 2px，字号 .9em（随正文变为 12.6px） */',
+    '.chat-client-root .prose-main.prose-ds :not(pre) > code {',
+    '  padding: 1.5px 2px !important;',
+    '}',
+    '/* 代码块：Cursor 12/18 等宽，圆角 12px */',
+    '.chat-client-root .prose-main.prose-ds pre {',
+    '  font-size: 12px !important;',
+    '  line-height: 18px !important;',
+    '  border-radius: 12px !important;',
+    '}',
+
+    '/* 工具卡片：Cursor 卡片与面板同色、12px 圆角、头部 39px（含 1px 分隔线）、内边距 8px、间距 6px */',
+    '.chat-client-root .group\\/card {',
+    '  background-color: transparent !important;',
+    '  border: 1px solid var(--ds-c-stroke) !important;',
+    '  border-radius: 12px !important;',
+    '}',
+    '.chat-client-root .group\\/card .group\\/header {',
+    '  height: 39px !important;',
+    '  padding: 8px !important;',
+    '  gap: 6px !important;',
+    '  font-size: 14px !important;',
+    '  line-height: 22px !important;',
+    '  border-bottom: 1px solid var(--ds-c-stroke) !important;',
+    '}',
+    '/* 工具输出：Cursor 13/18，36% 灰，内边距 0 10px 6px */',
+    '.chat-client-root pre.terminal-text {',
+    '  font-size: 13px !important;',
+    '  line-height: 18px !important;',
+    '  padding: 0 10px 6px !important;',
+    '  color: var(--ds-c-quaternary) !important;',
+    '}',
+
+    '/* 用户气泡：Cursor 实心 rgb(46,46,46)、1px 12% 描边、12px 圆角、内边距 8px 10px */',
+    '.chat-client-root .group\\/message-wrapper.ml-auto > div > div:first-child {',
+    '  background-color: var(--ds-c-bubble) !important;',
+    '  border-color: var(--ds-c-stroke) !important;',
+    '  padding: 8px 10px !important;',
+    '}',
+
+    '/* ===== 23. 工具卡片对齐 Cursor（第 23 段）=====',
+    '   Cursor 的 Shell 卡：头部 = 图标 36% + 描述 60% + 命令名 36%，正文直接是 13/18 的灰色输出，',
+    '   没有光束边框、没有左侧状态点、没有语法高亮。',
+    '   Devin 卡片多了 .border-beam 光束装饰（div[class*="-inset-px"]）、w-5 状态点列、',
+    '   命令与输出同一块 12px/normal 的 terminal-text 带彩色。这里压平这些差异，命令文本本身保留。 */',
+    '.chat-client-root .group\\/card > div[class*="-inset-px"] {',
+    '  display: none !important;',
+    '}',
+    '.chat-client-root .group\\/card .group\\/header svg {',
+    '  color: var(--ds-c-quaternary) !important;',
+    '}',
+    '.chat-client-root .group\\/card .group\\/header .codeium-text-medium {',
+    '  color: var(--ds-c-tertiary) !important;',
+    '}',
+    '.chat-client-root .group\\/card .flex.mb-2\\.5.mt-3 {',
+    '  margin: 0 !important;',
+    '}',
+    '.chat-client-root .group\\/card .flex.mb-2\\.5.mt-3 > .w-5 {',
+    '  display: none !important;',
+    '}',
+    '.chat-client-root .group\\/card .terminal-text {',
+    '  padding: 0 10px 6px !important;',
+    '  font-size: 13px !important;',
+    '  line-height: 18px !important;',
+    '}',
+    '.chat-client-root .group\\/card .terminal-text,',
+    '.chat-client-root .group\\/card .terminal-text * {',
+    '  color: var(--ds-c-quaternary) !important;',
+    '}',
+
+    '/* ===== 24. 活动行（Thoughts / Read / Searched 等）对齐 Cursor =====',
+    '   Cursor：行内无图标；动作词 60%，目标 36%，无胶囊底、非等宽；展开箭头在文字右侧。',
+    '   Devin：左侧 16px 图标按钮 + 目标是 code 胶囊（5% 底、13px 等宽）。',
+    '   这里隐藏图标、把按钮挪到文字右侧、目标去胶囊。 */',
+    '.chat-client-root .group\\/event-header > button > span[class*="group-hover/event-header:hidden"] {',
+    '  display: none !important;',
+    '}',
+    '.chat-client-root .group\\/event-header {',
+    '  gap: 4px !important;',
+    '}',
+    '.chat-client-root .group\\/event-header > button {',
+    '  order: 2 !important;',
+    '}',
+    '.chat-client-root .group\\/event-header > div {',
+    '  order: 1 !important;',
+    '}',
+    '.chat-client-root .group\\/event-header code,',
+    '.chat-client-root .group\\/event-header code * {',
+    '  background: transparent !important;',
+    '  color: var(--ds-c-quaternary) !important;',
+    '  font-family: -apple-system, "system-ui", "PingFang SC", "Hiragino Sans GB", sans-serif !important;',
+    '  font-size: 14px !important;',
+    '  line-height: 22px !important;',
+    '  padding: 0 !important;',
+    '  border-radius: 0 !important;',
+    '}',
+
+    '/* ===== 25. 命令输出的折叠高度对齐 Cursor =====',
+    '   Cursor：输出预览按钮 max-height 96px、overflow hidden，无渐隐遮罩，点击展开。',
+    '   Devin：内联 style="max-height: 64px; mask-image: 渐隐 35px"。',
+    '   只匹配折叠态的内联值（64px），展开后 Devin 写的样式不会被这里覆盖。 */',
+    '.chat-client-root .group\\/card div[style*="max-height: 64px"] {',
+    '  max-height: 96px !important;',
+    '  mask-image: none !important;',
+    '  -webkit-mask-image: none !important;',
+    '}',
   ].join('\n');
 
   // --------------------------------------------------------------------------
@@ -940,6 +1101,115 @@
     return /^Bypass\b/i.test(text) ? 'Agent' : text;
   }
 
+  // --------------------------------------------------------------------------
+  // Bypass 模式的 infinity 图标
+  // codicon 里没有 infinity，app 的模式图标也都是内联 svg（24 视窗、
+  // fill=currentColor 的实心路径），没法直接换图标名 —— 只能自绘。
+  // 用 lucide 的 infinity 路径（stroke 风格），描边 2 对齐 lucide 规格。
+  // 换法：把原 svg 藏掉（display:none，节点保留，React 还能更新它），
+  // 在它前面插一颗自己的 svg。图标键 INF_KEY 也登记进标签表，
+  // 窄面板下 iconKey() 读到我们的 svg 也能还原出 "Agent"。
+  // --------------------------------------------------------------------------
+  var INF_D =
+    'M12 12c-2-2.67-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.33 6-4Zm0 0c2 2.67 4 4 6 4a4 4 0 0 0 0-8c-2 0-4 1.33-6 4Z';
+  var INF_KEY = INF_D.slice(0, 80);
+  var INF_CLS = 'devin-infinity-icon';
+  var HIDDEN_ATTR = 'data-devin-icon-hidden';
+
+  function makeInfinityIcon(ref) {
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    // 复制原图标的 class（size-4 shrink-0 等），让父级的 [&_svg] 规则照常生效
+    svg.setAttribute('class', ((ref && ref.getAttribute('class')) || '') + ' ' + INF_CLS);
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '24px');
+    svg.setAttribute('height', '24px');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('aria-hidden', 'true');
+    var path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', INF_D);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path);
+    return svg;
+  }
+
+  // host 里「真正的模式图标」：第一颗不是我们插的、也不是下拉箭头的 svg。
+  // 传 ref 时只取排在 ref 之前的（菜单项尾部还有一颗检查/选中图标要避开）。
+  function modeIcon(host, ref) {
+    var svgs = host.querySelectorAll('svg');
+    for (var i = 0; i < svgs.length; i++) {
+      var s = svgs[i];
+      if (s.classList.contains('devin-chevron') || s.classList.contains(INF_CLS)) continue;
+      if (ref && !(ref.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_PRECEDING)) continue;
+      return s;
+    }
+    return null;
+  }
+
+  function swapToInfinityIcon(orig) {
+    if (!orig) return;
+    var prev = orig.previousElementSibling;
+    if (!(prev && prev.classList && prev.classList.contains(INF_CLS))) {
+      orig.parentNode.insertBefore(makeInfinityIcon(orig), orig);
+    }
+    orig.style.display = 'none';
+    orig.setAttribute(HIDDEN_ATTR, '1');
+  }
+
+  function unswapIcon(host) {
+    var inf = host.querySelector('svg.' + INF_CLS);
+    if (inf) inf.remove();
+    var hidden = host.querySelectorAll('svg[' + HIDDEN_ATTR + ']');
+    for (var i = 0; i < hidden.length; i++) {
+      hidden[i].style.display = '';
+      hidden[i].removeAttribute(HIDDEN_ATTR);
+    }
+  }
+
+  // 模式菜单（点药丸弹出的浮层）："Bypass Permissions" 项改名 "Agent" + 换图标。
+  // 结构（实测）：div[role=menuitem] > svg 图标 + div.flex-col > div.flex >
+  // span.break-words 标题 + span.text-xs 说明，尾部可能还有一颗选中标记 svg。
+  // data-devin-bypass 标记用来在标题被改名/被 React 重渲染后仍能认出这一项。
+  function restyleModeMenu(map) {
+    var items = document.querySelectorAll('[role="menuitem"]');
+    var changed = false;
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var title = item.querySelector('span.break-words') || item.querySelector('span');
+      if (!title) continue;
+      var bypass =
+        item.hasAttribute('data-devin-bypass') ||
+        /^Bypass\b/i.test((title.textContent || '').trim());
+      if (!bypass) continue;
+      item.setAttribute('data-devin-bypass', '1');
+      if ((title.textContent || '').trim() !== 'Agent') title.textContent = 'Agent';
+      swapToInfinityIcon(modeIcon(item, title));
+      if (map && map[INF_KEY] !== 'Agent') {
+        map[INF_KEY] = 'Agent';
+        changed = true;
+      }
+    }
+    if (changed) savePermLabels(map);
+  }
+
+  // 点药丸后菜单是 portal 异步渲染的，等 800ms 轮询会看到一闪而过的
+  // "Bypass Permissions"。点下去的瞬间排几个短延时，菜单一出现就改。
+  function scheduleMenuRestyle() {
+    var shared = (window.__devinUi = window.__devinUi || {});
+    var map = shared.permLabels || (shared.permLabels = loadPermLabels());
+    var delays = [30, 100, 250, 500];
+    for (var i = 0; i < delays.length; i++) {
+      setTimeout(function () {
+        restyleModeMenu(map);
+        learnFromMenu(map);
+      }, delays[i]);
+    }
+  }
+
   // 窄窗口下 app 会把药丸文字整个从 DOM 里删掉（React 条件渲染，只留图标），
   // CSS 救不回来 —— 只能自己把文字补回去。模式名没法凭空得知，所以用
   // 图标的 path d 当键，记住「图标 -> 模式名」的映射（存 localStorage 跨重启）。
@@ -962,46 +1232,10 @@
   }
 
   function iconKey(el) {
-    var svg = el.querySelector('svg:not(.devin-chevron):not([data-devin-infinity])');
+    var svg = el.querySelector('svg:not(.devin-chevron)');
     var path = svg && svg.querySelector('path');
     var d = path && path.getAttribute('d');
     return d ? d.slice(0, 80) : '';
-  }
-
-  var BYPASS_ICON = 'M11.260 2.219';
-
-  function swapModeIcon(el) {
-    var svg = el.querySelector('svg:not(.devin-chevron):not([data-devin-infinity])');
-    if (!svg) return;
-    var bypass = iconKey(el).indexOf(BYPASS_ICON) === 0;
-    var mark = el.querySelector('[data-devin-infinity]');
-    svg.style.display = bypass ? 'none' : '';
-    if (!bypass) {
-      if (mark) mark.remove();
-      return;
-    }
-    if (mark && mark.tagName.toLowerCase() !== 'svg') {
-      mark.remove();
-      mark = null;
-    }
-    if (!mark) {
-      mark = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      mark.setAttribute('data-devin-infinity', '1');
-      mark.setAttribute('class', 'size-4 shrink-0 stroke-2');
-      mark.setAttribute('aria-hidden', 'true');
-      mark.setAttribute('width', '24');
-      mark.setAttribute('height', '24');
-      mark.setAttribute('viewBox', '0 0 24 24');
-      mark.setAttribute('fill', 'none');
-      var infinity = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      infinity.setAttribute('d', 'M12 12c-2-2.67-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.33 6-4Zm0 0c2 2.67 4 4 6 4a4 4 0 0 0 0-8c-2 0-4 1.33-6 4Z');
-      infinity.setAttribute('stroke', 'currentColor');
-      infinity.setAttribute('stroke-width', '2');
-      infinity.setAttribute('stroke-linecap', 'round');
-      infinity.setAttribute('stroke-linejoin', 'round');
-      mark.appendChild(infinity);
-      el.insertBefore(mark, svg);
-    }
   }
 
   // 从打开的模式菜单里学「图标 -> 模式名」（菜单项结构：图标 + 标题 + 说明）
@@ -1015,22 +1249,29 @@
     }
   }
 
-  // 把文字补回药丸（app 自己渲染了 span 时不动）
+  // 把文字补回药丸（app 自己渲染了 span 时不动）。返回改名后的生效标签。
   function restorePermLabel(pill, map) {
     var own = pill.querySelector('[data-devin-label]');
     var span = pill.querySelector('span');
     if (span) {
       var text = modeLabel((span.textContent || '').trim());
       if (span.textContent !== text) span.textContent = text;
+      var dirty = false;
       var seen = iconKey(pill);
       if (seen && map[seen] !== text) {
         map[seen] = text;
-        savePermLabels(map);
+        dirty = true;
       }
-      return;
+      // iconKey() 读到的是我们换上去的 infinity svg 时，也要能还原出 "Agent"
+      if (text === 'Agent' && map[INF_KEY] !== 'Agent') {
+        map[INF_KEY] = 'Agent';
+        dirty = true;
+      }
+      if (dirty) savePermLabels(map);
+      return text;
     }
     var label = map[iconKey(pill)];
-    if (!label) return;
+    if (!label) return '';
     if (!own) {
       own = document.createElement('span');
       own.setAttribute('data-devin-label', '1');
@@ -1041,6 +1282,7 @@
     } else if (own.textContent !== label) {
       own.textContent = label;
     }
+    return label;
   }
 
   function decorate() {
@@ -1087,19 +1329,23 @@
     // React 重渲染会把文字改回去 / 删掉，所以这里每次 tick 都检查一遍。
     var shared = (window.__devinUi = window.__devinUi || {});
     var permLabels = shared.permLabels || (shared.permLabels = loadPermLabels());
+    restyleModeMenu(permLabels);
     learnFromMenu(permLabels);
     var permPills = band.querySelectorAll('[data-devin-perm]');
     for (var q = 0; q < permPills.length; q++) {
-      restorePermLabel(permPills[q], permLabels);
-      swapModeIcon(permPills[q]);
-    }
-    var menuItems = document.querySelectorAll('[role="menuitem"]');
-    for (var mi = 0; mi < menuItems.length; mi++) {
-      var item = menuItems[mi];
-      if (iconKey(item).indexOf(BYPASS_ICON) !== 0) continue;
-      var title = item.querySelector('span.break-words') || item.querySelector('span');
-      if (title && title.textContent.trim() !== 'Agent') title.textContent = 'Agent';
-      swapModeIcon(item);
+      var pill = permPills[q];
+      var lbl = restorePermLabel(pill, permLabels);
+      // bypass 模式换 infinity 图标；标签暂时认不出但图标已是我们的，保持现状
+      if (lbl === 'Agent' || pill.querySelector('svg.' + INF_CLS)) {
+        swapToInfinityIcon(modeIcon(pill));
+      } else if (lbl) {
+        unswapIcon(pill);
+      }
+      // 点开模式菜单时立刻重改，别等下一轮轮询（会看到 "Bypass Permissions" 闪一下）
+      if (!pill.hasAttribute('data-devin-menu-watch')) {
+        pill.setAttribute('data-devin-menu-watch', '1');
+        pill.addEventListener('click', scheduleMenuRestyle);
+      }
     }
 
     // 给 模式 / 模型 按钮补上右侧的下拉箭头

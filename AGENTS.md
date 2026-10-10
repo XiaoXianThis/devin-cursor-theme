@@ -104,6 +104,11 @@ macOS 上（仓库已迁到 Mac，工具链同样可用）：
 18. **验证方法本身也会骗人**。只读计算样式、或在"背后没内容"的状态下截图，都会得出
     "改好了"的错误结论。凡是"盖住/遮住"类的改动，必须在被遮对象**确实存在**的情况下验证
     （合成一段高饱和内容放在下层，再采样像素）。
+19. **`.chat-client-root` 不止一个实例，别给它设底色**。页面里有一个 0×0 的、一个全窗口的，
+    给它 `background-color` 会把整个窗口盖成一块色。聊天底色默认跟随主题，不要为了对齐 Cursor 去改。
+20. **从 Devin 的 shell 里启动 Cursor 会立刻退出**。Devin 是 Electron 应用，子 shell 会继承
+    `ELECTRON_RUN_AS_NODE=1` 等变量，Cursor 按 Node 模式跑完就退。启动时用干净环境：
+    `env -i HOME="$HOME" USER="$USER" PATH=/usr/bin:/bin:/usr/sbin:/sbin open -a Cursor`。
 
 ## 界面架构（Devin）
 
@@ -249,6 +254,30 @@ Cursor 工具卡片原文：
 }
 ```
 
+### Cursor 聊天实测（第 22 段，CDP 读计算样式，Cursor 3.18.9）
+
+Cursor 的聊天在 `General chat` 面板里，和 Devin 同样是 `workbench.html` 的 DOM。
+
+| 元素 | Cursor 实测值 | Devin 改前 | Devin 改后 |
+|---|---|---|---|
+| 正文 `.ui-markdown__paragraph` | 14px / 22px，字距 normal，`rgb(204,204,204)` | 段落被 dense 压到 13px/18px，字距 -0.08px | 14/22，normal |
+| 段距 | 段后 16px；段落紧跟列表时 8px | 16px | 同左 |
+| 标题 h2 | 18.452px / 26.2px，w590，段前 20.5px、段后 4px | 按 em 算 | 同 Cursor |
+| 标题 h3 | 16.996px / 24.13px，w590，段前 20.5px、段后 4px | 按 em 算 | 同 Cursor |
+| 有序列表 `ol` | `padding-left: 28px`，margin `8px 0 18px`，项间 8px | 1.4em | 28px |
+| 行内代码 `code` | 0.9em（12.6px），`padding 1.5px 2px`，bg 8%，radius 5px | padding 3px | 1.5px 2px |
+| 代码块 | 容器 `rgb(31,31,31)` + 1px 12% 描边 + 圆角 12px，margin `12px 0`；行 Menlo 12/18，左右内边距 10px | 圆角 8px，12px/16.5px | 圆角 12px、12/18 |
+| 用户气泡 `.composer-human-message` | 实心 `rgb(46,46,46)`，1px `rgba(204,204,204,.12)`，圆角 12px，内边距 `8px 10px`，文字 14/22 | 内边距 `8px 14px` | 同 Cursor |
+| 工具卡 `.ui-shell-tool-call` | 卡片底 = 面板底 `rgb(31,31,31)`，1px 12% 描边，圆角 12px；头部 39px（含分隔线），内边距 8px，间距 6px，14/22 | 头部 29px，内边距 4px 6px，卡片底 `rgb(25,26,27)` | 同 Cursor |
+| 工具输出 | 13px / 18px，`rgba(204,204,204,.36)`，内边距 `0 10px 6px` | 12px/20px，内边距 `0 0 12px 20px` | 同 Cursor |
+| 思考行 `Thought` | 14/22，`rgba(204,204,204,.6)` | 14/22，tertiary | 不变（已一致） |
+| 聊天底色 | `rgb(31,31,31)` | 跟随主题 | 不改（用户要求） |
+
+注意：`color-mix(... editor-foreground ...)` 会叠加前景色自身的 0.9 透明度，所以 Cursor 的
+`rgba(204,204,204, x)` 这类颜色直接写 rgba，不要用 `--ds-*` 的 editor-foreground 版本去对齐。
+
+Devin 段落的段距、标题样式未在真实消息里验证，是用临时 DOM（测完即删）测的。
+
 ## 交付物
 
 | 文件 | 作用 |
@@ -359,6 +388,10 @@ node tools/cdp.mjs evalfile workbench.html snippets/verify-all.js
 | 31 | 提问卡片（elicitation）给**不透明**底 + 四角 12px 圆角 + 12% 描边，内部字号对齐 14px/22px（第 14.5 段） | ✅ |
 | 32 | 空编辑器欢迎页显示「Recent projects」列表 + View all 搜索打开（第 5 段） | ✅ |
 | 33 | 去掉「Your included … usage quota is exhausted.」用量耗尽红色横幅 | ✅ |
+| 34 | 聊天区高保真对齐 Cursor：正文 14/22 字距 normal、标题、列表 28px、代码块、工具卡头 39px、用户气泡 `rgb(46,46,46)`、终端输出 13/18 @36%（第 22 段） | ✅ |
+| 35 | 工具卡片对齐 Cursor：去掉 `border-beam` 光束装饰与 w-5 状态点、命令/输出 13/18 @36% 无语法色（第 23 段） | ✅ |
+| 36 | 活动行（Thoughts / Read / Searched）对齐 Cursor：去掉左侧图标，展开按钮移到文字右侧，目标 `code` 去胶囊底（第 24 段） | ✅ |
+| 37 | 命令输出折叠高度对齐 Cursor：Devin 64px + 35px 渐隐 → 96px 无渐隐（第 25 段，只匹配折叠态内联值） | ✅ |
 
 侧边栏结构（`#workbench.parts.sidebar` 的三个直接子元素）：
 
