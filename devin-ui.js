@@ -546,6 +546,32 @@
     '  background-color: var(--ds-bubble-bg) !important;',
     '}',
 
+    '/* 1b) 用户气泡（普通 / QA / 其他）占满宽度、文字左对齐。',
+    '      包裹带 .ml-auto，在 flex-col 里不会被拉伸，会收缩成内容宽度，所以显式设 100%。 */',
+    '.chat-client-root .group\\/message-wrapper.ml-auto {',
+    '  width: 100% !important;',
+    '  margin-left: 0 !important;',
+    '}',
+    '.chat-client-root .group\\/message-wrapper.ml-auto > div > div.w-fit,',
+    '.chat-client-root .group\\/message-wrapper.ml-auto > div.w-fit {',
+    '  width: 100% !important;',
+    '  text-align: left !important;',
+    '}',
+    '/* QA 双层气泡：外层（.w-fit 的那一层）用和普通气泡一样的 12px / 13.5% / 描边；',
+    '      内层 div.flex.w-full.flex-col.gap-1 去掉底色、描边、圆角和填充。 */',
+    '.chat-client-root .group\\/message-wrapper.ml-auto > div:has(> div.flex.w-full.flex-col.gap-1) {',
+    '  border-radius: var(--ds-radius-xl) !important;',
+    '  border: 1px solid var(--ds-stroke-2) !important;',
+    '  background-color: var(--ds-bubble-bg) !important;',
+    '  padding: 8px 14px !important;',
+    '}',
+    '.chat-client-root .group\\/message-wrapper.ml-auto > div > div.flex.w-full.flex-col.gap-1 {',
+    '  background-color: transparent !important;',
+    '  border: 0 !important;',
+    '  border-radius: 0 !important;',
+    '  padding: 0 !important;',
+    '}',
+
     '/* 2) 思考区：正文用 opacity 0.5 暗化（Cursor 的做法），标题单独保持 60%。',
     '      正文是 .highlight-wrapper 的第 2 个子元素（第 1 个是标题）；',
     '      折叠状态下只有标题一个子元素，规则自然不命中。 */',
@@ -936,10 +962,46 @@
   }
 
   function iconKey(el) {
-    var svg = el.querySelector('svg:not(.devin-chevron)');
+    var svg = el.querySelector('svg:not(.devin-chevron):not([data-devin-infinity])');
     var path = svg && svg.querySelector('path');
     var d = path && path.getAttribute('d');
     return d ? d.slice(0, 80) : '';
+  }
+
+  var BYPASS_ICON = 'M11.260 2.219';
+
+  function swapModeIcon(el) {
+    var svg = el.querySelector('svg:not(.devin-chevron):not([data-devin-infinity])');
+    if (!svg) return;
+    var bypass = iconKey(el).indexOf(BYPASS_ICON) === 0;
+    var mark = el.querySelector('[data-devin-infinity]');
+    svg.style.display = bypass ? 'none' : '';
+    if (!bypass) {
+      if (mark) mark.remove();
+      return;
+    }
+    if (mark && mark.tagName.toLowerCase() !== 'svg') {
+      mark.remove();
+      mark = null;
+    }
+    if (!mark) {
+      mark = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      mark.setAttribute('data-devin-infinity', '1');
+      mark.setAttribute('class', 'size-4 shrink-0 stroke-2');
+      mark.setAttribute('aria-hidden', 'true');
+      mark.setAttribute('width', '24');
+      mark.setAttribute('height', '24');
+      mark.setAttribute('viewBox', '0 0 24 24');
+      mark.setAttribute('fill', 'none');
+      var infinity = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      infinity.setAttribute('d', 'M12 12c-2-2.67-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.33 6-4Zm0 0c2 2.67 4 4 6 4a4 4 0 0 0 0-8c-2 0-4 1.33-6 4Z');
+      infinity.setAttribute('stroke', 'currentColor');
+      infinity.setAttribute('stroke-width', '2');
+      infinity.setAttribute('stroke-linecap', 'round');
+      infinity.setAttribute('stroke-linejoin', 'round');
+      mark.appendChild(infinity);
+      el.insertBefore(mark, svg);
+    }
   }
 
   // 从打开的模式菜单里学「图标 -> 模式名」（菜单项结构：图标 + 标题 + 说明）
@@ -1027,7 +1089,18 @@
     var permLabels = shared.permLabels || (shared.permLabels = loadPermLabels());
     learnFromMenu(permLabels);
     var permPills = band.querySelectorAll('[data-devin-perm]');
-    for (var q = 0; q < permPills.length; q++) restorePermLabel(permPills[q], permLabels);
+    for (var q = 0; q < permPills.length; q++) {
+      restorePermLabel(permPills[q], permLabels);
+      swapModeIcon(permPills[q]);
+    }
+    var menuItems = document.querySelectorAll('[role="menuitem"]');
+    for (var mi = 0; mi < menuItems.length; mi++) {
+      var item = menuItems[mi];
+      if (iconKey(item).indexOf(BYPASS_ICON) !== 0) continue;
+      var title = item.querySelector('span.break-words') || item.querySelector('span');
+      if (title && title.textContent.trim() !== 'Agent') title.textContent = 'Agent';
+      swapModeIcon(item);
+    }
 
     // 给 模式 / 模型 按钮补上右侧的下拉箭头
     var chevronHosts = band.querySelectorAll('[data-devin-perm], [data-devin-model]');
